@@ -43,8 +43,17 @@ void * handle_client(void * args){
     const char delim[2] = " ";          // split delimiter
     client_info * info = args;
     char username[100], pswd[100];
+    char base_dir[50];
+    FILE * dir_file;
 
     printf("New thread. Logging in.\n");
+
+    dir_file = fopen("base_dir.txt", "r");
+    fgets(base_dir, 50, dir_file);
+    // Remove line feed if needed
+    if(iscntrl(base_dir[strlen(base_dir)-1]))
+        base_dir[strlen(base_dir)-1] = '\0';
+    printf("Base_dir: %s\n", base_dir);
 
     while(!logged){
         // Waiting username from client
@@ -78,6 +87,10 @@ void * handle_client(void * args){
         }
     }
 
+    // Changing client directory to base_dir
+    chdir(base_dir);
+    printf("Current dir: %s\n", getcwd(buf, sizeof(buf)));
+
     while(logged){
         // Waiting command from client
         bzero(buf, sizeof(buf));
@@ -95,14 +108,16 @@ void * handle_client(void * args){
         ptr = strtok(cmd_name, delim);
         printf("cmd_name: %s\n", cmd_name);
 
-        for(int k = 0 ; k < 10 ; k++){
-            printf("cmd_name[%d]=%d\n", k, cmd_name[k]);
-        }
-
         if(!strcmp(cmd_name, "pwd")){
             printf("Command sent from client: %s\n", buf);
-            err = write(info->sock, "You said pwd", 12);
-            error(err, -1, "Sending failed.\n");
+            if(strcmp(cmd_name, buf)){
+                err = write(info->sock, "Invalid command. Did you mean 'pwd'?", 36);
+                error(err, -1, "Sending failed.\n");
+            } else{
+                getcwd(buf, sizeof(buf));
+                err = write(info->sock, buf, strlen(buf));
+                error(err, -1, "Sending failed.\n");
+            }
         } else if(!strcmp(cmd_name, "ls")){
             printf("Command sent from client: %s\n", buf);
             err = write(info->sock, "You said ls", 11);
