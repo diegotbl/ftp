@@ -124,7 +124,7 @@ int main(int argc, char *argv[]){
 
             printf("Server's response: %s\n", buf);
 
-            if(!strcmp(buf, "Disconnected")){
+            if(!strcmp(buf, "530")){
                 logged = 0;
                 session = 0;
                 shutdown(sock, SHUT_RDWR);

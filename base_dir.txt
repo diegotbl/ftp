@@ -1,1 +1,1 @@
-/home/ftp
+/tmp/ftp

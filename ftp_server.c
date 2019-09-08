@@ -23,6 +23,8 @@
 
 typedef struct {
     int sock;
+    char base_dir[50];
+    char original_dir[50];
 } client_info;
 
 void error(int a, int b, char * msg){
@@ -31,6 +33,38 @@ void error(int a, int b, char * msg){
         exit(1);
     }
     return;
+}
+
+int auth(char * username, char * password, FILE * cred_file){
+    /* Checks if (username, password) is in cred_file */
+    char line[100], user[100];
+    char * ptr;
+    const char delim[2] = " ";
+
+    while(!feof(cred_file)){
+        fgets(line, 100, cred_file);
+        // Remove line feed if needed
+        if(iscntrl(line[strlen(line)-1]))
+            line[strlen(line)-1] = '\0';
+        strcpy(user, line);
+        ptr = strtok(user, delim);
+        printf("%s user read from file\n", user);
+        ptr = strtok(NULL, delim);
+        printf("ptr: %s\n", ptr);
+        if(!strcmp(username, user)){
+            printf("User found: %s\n", user);
+            if(!strcmp(password, ptr)){
+                printf("User authenticated\n");
+                return 1;
+            }
+            else {
+                printf("Password incorrect for user %s\n", user);
+                return 0;
+            }
+        }
+    }
+    printf("User NOT found. Retry.\n");
+    return 0;
 }
 
 void * handle_client(void * args){
@@ -43,52 +77,50 @@ void * handle_client(void * args){
     const char delim[2] = " ";          // split delimiter
     client_info * info = args;
     char username[100], pswd[100];
-    char base_dir[50];
-    FILE * dir_file;
+    FILE * cred_file;
+    int retval = 0;
 
     printf("New thread. Logging in.\n");
 
-    dir_file = fopen("base_dir.txt", "r");
-    fgets(base_dir, 50, dir_file);
-    // Remove line feed if needed
-    if(iscntrl(base_dir[strlen(base_dir)-1]))
-        base_dir[strlen(base_dir)-1] = '\0';
-    printf("Base_dir: %s\n", base_dir);
+    // Opening cred_file for client authentication
+    chdir(info->original_dir);
+    cred_file = fopen("credentials.txt", "r");
+    chdir(info->base_dir);
 
-    while(!logged){
-        // Waiting username from client
-        printf("Waiting for username.\n");
-        bzero(buf, sizeof(buf));
-        err = read(info->sock, buf, sizeof(buf));
-        error(err, -1, "Reading failed.\n");
-        printf("Username: %s\n", buf);
-        strcpy(username, buf);
-        username[strlen(username)-1] = '\0';        // Remove line feed
+    // Waiting username from client
+    printf("Waiting for username.\n");
+    bzero(buf, sizeof(buf));
+    err = read(info->sock, buf, sizeof(buf));
+    error(err, -1, "Reading failed.\n");
+    printf("Username: %s\n", buf);
+    strcpy(username, buf);
+    username[strlen(username)-1] = '\0';        // Remove line feed
 
-        // Waiting password from client
-        printf("Waiting for password.\n");
-        bzero(buf, sizeof(buf));
-        err = read(info->sock, buf, sizeof(buf));
-        error(err, -1, "Reading failed.\n");
-        printf("Password: %s\n", buf);
-        strcpy(pswd, buf);
-        pswd[strlen(pswd)-1] = '\0';        // Remove line feed
+    // Waiting password from client
+    printf("Waiting for password.\n");
+    bzero(buf, sizeof(buf));
+    err = read(info->sock, buf, sizeof(buf));
+    error(err, -1, "Reading failed.\n");
+    printf("Password: %s\n", buf);
+    strcpy(pswd, buf);
+    pswd[strlen(pswd)-1] = '\0';        // Remove line feed
 
-        printf("Username: %s ; pswd: %s\n", username, pswd);
+    printf("Username: %s ; pswd: %s\n", username, pswd);
 
-        //check_validity(info->username, info->password);
-        if(!strcmp(username, "diego") && !strcmp(pswd, "senha")){
-            logged = 1;
-            err = write(info->sock, "230", 3);  // 230 means user logged in
-            error(err, -1, "Sending failed.\n");
-        } else {      // Error authenticating
-            err = write(info->sock, "530", 3);  // 530 means not logged in
-            error(err, -1, "Sending failed.\n");
-        }
+    if(auth(username, pswd, cred_file)){
+        logged = 1;
+        err = write(info->sock, "230", 3);  // 230 means user logged in
+        error(err, -1, "Sending failed.\n");
+    } else {      // Error authenticating
+        err = write(info->sock, "530", 3);  // 530 means not logged in
+        error(err, -1, "Sending failed.\n");
+        fclose(cred_file);
+        pthread_exit(&retval);      // Close thread and wait for new connection
     }
+    fclose(cred_file);
 
     // Changing client directory to base_dir
-    chdir(base_dir);
+    chdir(info->base_dir);
     printf("Current dir: %s\n", getcwd(buf, sizeof(buf)));
 
     while(logged){
@@ -97,11 +129,15 @@ void * handle_client(void * args){
         err = read(info->sock, buf, sizeof(buf));
         error(err, -1, "Reading failed.\n");
 
+        if(buf[0] == '\0')         // Means client killed program
+            pthread_exit(&retval);  // Close thread and wait for new connection
+
         // Remove line feed if needed
         if(iscntrl(buf[strlen(buf)-1]))
             buf[strlen(buf)-1] = '\0';
 
         printf("Received: %s\n", buf);
+
         // Split command string
         bzero(cmd_name, sizeof(cmd_name));
         strcpy(cmd_name, buf);
@@ -135,7 +171,7 @@ void * handle_client(void * args){
     }
 
     free(info);
-    return 0;
+    pthread_exit(&retval);  // Close thread and wait for new connection
 }
 
 int main(int argc,char *argv[]){
@@ -145,6 +181,20 @@ int main(int argc,char *argv[]){
     pthread_t tid;
     int err, len;
     client_info * info;
+    char base_dir[50], original_dir[50];
+    FILE * dir_file;
+
+    /* Store directory that contains ftp_server program and the files */
+    getcwd(original_dir, sizeof(original_dir));
+
+    /* Read file to get base directory */
+    dir_file = fopen("base_dir.txt", "r");
+    fgets(base_dir, 50, dir_file);
+    // Remove line feed if needed
+    if(iscntrl(base_dir[strlen(base_dir)-1]))
+        base_dir[strlen(base_dir)-1] = '\0';
+    printf("Base_dir: %s\n", base_dir);
+    fclose(dir_file);
 
     /* Socket creation:
         int socket(int domain, int type, int protocol);
@@ -216,6 +266,8 @@ int main(int argc,char *argv[]){
         // For each new connection stablished, create a new thread to handle it
         info = malloc(sizeof *info);
         info->sock = sock2;
+        strcpy(info->base_dir, base_dir);
+        strcpy(info->original_dir, original_dir);
         if(pthread_create(&tid, NULL, &handle_client, (void *) info)){
             free(info);
             printf("ERROR: thread creation failed.\n");
