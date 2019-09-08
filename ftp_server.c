@@ -5,20 +5,10 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<ctype.h>
-
-/*for getting file size using stat()*/
 #include<sys/stat.h>
-
-/*for sendfile()*/
 #include<sys/sendfile.h>
-
-/*for O_RDONLY*/
 #include<fcntl.h>
-
-/* for read and write */
 #include<unistd.h>
-
-/* for thread handling */
 #include<pthread.h>
 
 typedef struct {
@@ -72,7 +62,7 @@ void * handle_client(void * args){
     int logged = 0;
     char buf[100], command[100];
     char * ptr;                         // pointer to split string
-    char * param;                   // result of command spliting
+    char * param;                       // result of command spliting
     char cmd_name[100];
     const char delim[2] = " ";          // split delimiter
     client_info * info = args;
@@ -152,6 +142,18 @@ void * handle_client(void * args){
             } else{
                 getcwd(buf, sizeof(buf));
                 err = write(info->sock, buf, strlen(buf));
+                error(err, -1, "Sending failed.\n");
+            }
+        } else if(!strcmp(cmd_name, "cd")){
+            ptr = strtok(NULL, delim);      // Get dirname
+            printf("Command sent from client: %s\n", buf);
+            printf("path: %s\n", ptr);
+            if(chdir(ptr) == 0){     // Success
+                err = write(info->sock, "Directory changed", 17);
+                error(err, -1, "Sending failed.\n");
+            }
+            else {
+                err = write(info->sock, "Path not found", 14);
                 error(err, -1, "Sending failed.\n");
             }
         } else if(!strcmp(cmd_name, "ls")){
@@ -277,45 +279,6 @@ int main(int argc,char *argv[]){
 
     // i = 1;
     // while(1){
-    //     memset(buf, '\0', strlen(buf)*sizeof(char));
-    //     recv(sock2, buf, 99, 0);
-    //     // err = read(sock2, buf, strlen(buf)*sizeof(char));
-    //     if(err < 0){
-    //         printf("Reading failed\n");
-    //         exit(1);
-    //     }
-    //     for(int j = 0 ; j < 100 ; j++){
-    //         printf("%d: %c\t", buf[j], buf[j]);
-    //     }
-    //     printf("received buf: %s\n", buf);
-    //     sscanf(buf, "%s%s", command, param);
-    //     printf("Command received: %s\n", command);
-    //     printf("Param received: %s\n", param);
-    //
-    //     if(!strcmp(command, "pwd")){
-    //         // sscanf(buf, "%s", param);
-    //
-    //         system("pwd>temp.txt");
-    //         i = 0;
-    //         FILE*f = fopen("temp.txt","r");
-    //         while(!feof(f))
-    //             buf[i++] = fgetc(f);
-    //         buf[i-1] = '\0';
-    //         fclose(f);
-    //         send(sock2, buf, 100, 0);
-    //     }
-    //     // else if(){
-    //     //
-    //     // }
-    //     else printf("Not implemented yet\n");
-    //
-    //     scanf("%*[^\n]");
-    //     scanf("%*c");
-    // }
-
-
-    // i = 1;
-    // while(1){
     //     recv(sock2, buf, 100, 0);
     //     sscanf(buf, "%s", command);
     //     if(!strcmp(command, "ls")){
@@ -356,22 +319,6 @@ int main(int argc,char *argv[]){
     //         recv(sock2, f, size, 0);
     //         c = write(filehandle, f, size);
     //         close(filehandle);
-    //         send(sock2, &c, sizeof(int), 0);
-    //     }
-    //     else if(!strcmp(command, "pwd")){
-    //         system("pwd>temp.txt");
-    //         i = 0;
-    //         FILE*f = fopen("temp.txt","r");
-    //         while(!feof(f))
-    //             buf[i++] = fgetc(f);
-    //         buf[i-1] = '\0';
-    //         fclose(f);
-    //         send(sock2, buf, 100, 0);
-    //     }
-    //     else if(!strcmp(command, "cd")){
-    //         if(chdir(buf+3) == 0)
-    //             c = 1;
-    //         else c = 0;
     //         send(sock2, &c, sizeof(int), 0);
     //     }
     //     else if(!strcmp(command, "bye") || !strcmp(command, "quit")){
