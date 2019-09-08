@@ -129,6 +129,12 @@ int main(int argc, char *argv[]){
                 session = 0;
                 shutdown(sock, SHUT_RDWR);
                 close(sock);
+            } else if(!strcmp(buf, "221")){
+                logged = 0;
+                session = 0;
+                shutdown(sock, SHUT_RDWR);
+                close(sock);
+                return 0;       // kill the client
             }
         }
     }

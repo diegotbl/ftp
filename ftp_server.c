@@ -165,7 +165,12 @@ void * handle_client(void * args){
             err = write(info->sock, "530", 3);
             error(err, -1, "Sending failed.\n");
             logged = 0;
-        } else {
+        } else if(!strcmp(cmd_name, "quit")){
+            printf("Command sent from client: %s. Client disconnected.\n", buf);
+            err = write(info->sock, "221", 3);
+            error(err, -1, "Sending failed.\n");
+            logged = 0;
+        }else {
             printf("Command sent from client: %s\n", buf);
             err = write(info->sock, "Not implemented yet", 19);
             error(err, -1, "Sending failed.\n");
