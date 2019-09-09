@@ -1,15 +1,15 @@
 /*FTP server*/
 #include<sys/socket.h>
+#include<sys/stat.h>
+#include<sys/sendfile.h>
 #include<netinet/in.h>
 #include<string.h>
 #include<stdio.h>
 #include<stdlib.h>
 #include<ctype.h>
-#include<sys/stat.h>
-#include<sys/sendfile.h>
-#include<fcntl.h>
 #include<unistd.h>
 #include<pthread.h>
+#include<fcntl.h>
 
 typedef struct {
     int sock;
@@ -23,6 +23,64 @@ void error(int a, int b, char * msg){
         exit(1);
     }
     return;
+}
+
+char* itoa(int value, char* result, int base) {
+    /**
+    * C++ version 0.4 char* style "itoa":
+    * Written by Lukás Chmela
+    * Released under GPLv3.
+    */
+	// check if base is valid
+	if(base < 2 || base > 36){
+        *result = '\0';
+        return result;
+    }
+
+	char* ptr = result, *ptr1 = result, tmp_char;
+	int tmp_value;
+
+	do{
+        tmp_value = value;
+        value /= base;
+        *ptr++ = "zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz" [35 + (tmp_value - value * base)];
+	} while(value);
+
+	// Apply negative sign
+	if(tmp_value < 0)
+        *ptr++ = '-';
+	*ptr-- = '\0';
+
+	while(ptr1 < ptr){
+		tmp_char = *ptr;
+		*ptr--= *ptr1;
+		*ptr1++ = tmp_char;
+	}
+	return result;
+}
+
+void parse_file(char * name){
+    FILE * fd, * parsed;
+    char line[100], last_line[100];
+
+    strcpy(last_line, "\0");
+
+    fd = fopen(name, "r");
+    parsed = fopen("parsed.txt", "w");
+
+    while(!feof(fd)){
+        fgets(line, 100, fd);
+        // Remove line feed if needed
+        if(iscntrl(line[strlen(line)-1]))
+            line[strlen(line)-1] = '\0';
+        printf("%s\n", line);
+        if(strcmp(line, name) && strcmp(line, last_line))
+            fprintf(parsed, "%s\n", line);
+        strcpy(last_line, line);
+    }
+
+    fclose(fd);
+    fclose(parsed);
 }
 
 int auth(char * username, char * password, FILE * cred_file){
@@ -57,6 +115,46 @@ int auth(char * username, char * password, FILE * cred_file){
     return 0;
 }
 
+void ls(char * ptr, int sock_fd){
+    char command[50], size_str[10];
+    struct stat obj;
+    int size, err;
+    int filehandle;
+    FILE * fd;
+
+    if(ptr == NULL){
+        strcpy(command, "ls >temps.txt");
+        err = system(command);
+    }
+    else {
+        strcpy(command, "ls ");
+        strcat(command, ptr);
+        strcat(command, " >temps.txt");
+        err = system(command);
+    }
+
+    // parse file to remove "temps.txt" entry from itself
+    if(err == 0)       // No error in ls
+        parse_file("temps.txt");
+    else {
+        printf("Path not found\n");
+        fd = fopen("parsed.txt", "w");
+        fprintf(fd, "Path not found\n");
+        fclose(fd);
+    }
+    stat("parsed.txt", &obj);
+    size = obj.st_size;
+    send(sock_fd, &size, sizeof(int), 0);
+    filehandle = open("parsed.txt", O_RDONLY);
+    sendfile(sock_fd, filehandle, NULL, size);
+    err = remove("temps.txt");
+    error(err, -1, "temps.txt remove failed.\n");
+    err = remove("parsed.txt");
+    error(err, -1, "parsed.txt remove failed.\n");
+
+    return;
+}
+
 void * handle_client(void * args){
     int err, i, size, len, c, j;
     int logged = 0;
@@ -69,6 +167,7 @@ void * handle_client(void * args){
     char username[100], pswd[100];
     FILE * cred_file;
     int retval = 0;
+    char my_path[100];
 
     printf("New thread. Logging in.\n");
 
@@ -112,6 +211,7 @@ void * handle_client(void * args){
     // Changing client directory to base_dir
     chdir(info->base_dir);
     printf("Current dir: %s\n", getcwd(buf, sizeof(buf)));
+    strcpy(my_path, buf);
 
     while(logged){
         // Waiting command from client
@@ -134,14 +234,16 @@ void * handle_client(void * args){
         ptr = strtok(cmd_name, delim);
         printf("cmd_name: %s\n", cmd_name);
 
+        chdir(my_path);
+
         if(!strcmp(cmd_name, "pwd")){
             printf("Command sent from client: %s\n", buf);
             if(strcmp(cmd_name, buf)){
                 err = write(info->sock, "Invalid command. Did you mean 'pwd'?", 36);
                 error(err, -1, "Sending failed.\n");
             } else{
-                getcwd(buf, sizeof(buf));
-                err = write(info->sock, buf, strlen(buf));
+                getcwd(my_path, sizeof(my_path));
+                err = write(info->sock, my_path, strlen(my_path));
                 error(err, -1, "Sending failed.\n");
             }
         } else if(!strcmp(cmd_name, "cd")){
@@ -149,6 +251,7 @@ void * handle_client(void * args){
             printf("Command sent from client: %s\n", buf);
             printf("path: %s\n", ptr);
             if(chdir(ptr) == 0){     // Success
+                getcwd(my_path, sizeof(my_path));
                 err = write(info->sock, "Directory changed", 17);
                 error(err, -1, "Sending failed.\n");
             }
@@ -157,9 +260,10 @@ void * handle_client(void * args){
                 error(err, -1, "Sending failed.\n");
             }
         } else if(!strcmp(cmd_name, "ls")){
+            ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
-            err = write(info->sock, "You said ls", 11);
-            error(err, -1, "Sending failed.\n");
+            printf("param: %s\n", ptr);
+            ls(ptr, info->sock);
         } else if(!strcmp(cmd_name, "close")){
             printf("Command sent from client: %s. Client disconnected.\n", buf);
             err = write(info->sock, "530", 3);
@@ -170,7 +274,7 @@ void * handle_client(void * args){
             err = write(info->sock, "221", 3);
             error(err, -1, "Sending failed.\n");
             logged = 0;
-        }else {
+        } else {
             printf("Command sent from client: %s\n", buf);
             err = write(info->sock, "Not implemented yet", 19);
             error(err, -1, "Sending failed.\n");
@@ -325,12 +429,6 @@ int main(int argc,char *argv[]){
     //         c = write(filehandle, f, size);
     //         close(filehandle);
     //         send(sock2, &c, sizeof(int), 0);
-    //     }
-    //     else if(!strcmp(command, "bye") || !strcmp(command, "quit")){
-    //         printf("FTP server quitting..\n");
-    //         i = 1;
-    //         send(sock2, &i, sizeof(int), 0);
-    //         exit(0);
     //     }
     // }
     return 0;

@@ -5,6 +5,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<errno.h>
+#include<ctype.h>
 
 /*for getting file size using stat()*/
 #include<sys/stat.h>
@@ -38,11 +39,11 @@ int main(int argc, char *argv[]){
     struct sockaddr_in server;
     int sock;
     unsigned short port = 2121;     // We will use port 2121
-    char buf[100], command[25], cmd_name[25], filename[20], *f;
+    char buf[100], command[100], cmd_name[100], filename[20], *f;
     int k, size, status;
     int logged = 0, session = 0;
     struct stat obj;
-    int filehandle;
+    int filehandle, filesize;
     struct hostent *h;
     struct in_addr address;
     const char delim[2] = " ";
@@ -114,27 +115,62 @@ int main(int argc, char *argv[]){
             fgets(buf, sizeof(buf)-1, stdin);
             printf("command read: %s\n", buf);
 
+            strcpy(command, buf);
+            strcpy(cmd_name, buf);
+            ptr = strtok(cmd_name, delim);
+            printf("cmd_name: %s\n", cmd_name);
+            if(iscntrl(cmd_name[strlen(cmd_name)-1]))   // Remove line feed if needed
+                cmd_name[strlen(cmd_name)-1] = '\0';    // Remove line feed
+
             printf("\nsending buf: %s\n", buf);
             k = write(sock, buf, sizeof(buf));
             error(k, -1, "Sending failed.\n");
 
-            bzero(buf, sizeof(buf));
-            k = read(sock, buf, sizeof(buf));
-            error(k, -1, "Reading failed.\n");
-
-            printf("Server's response: %s\n", buf);
-
-            if(!strcmp(buf, "530")){
+            if(!strcmp(cmd_name, "close")){
+                bzero(buf, sizeof(buf));
+                k = read(sock, buf, sizeof(buf));
+                error(k, -1, "Reading failed.\n");
+                printf("Server's response: %s\n", buf);
                 logged = 0;
                 session = 0;
                 shutdown(sock, SHUT_RDWR);
                 close(sock);
-            } else if(!strcmp(buf, "221")){
+            } else if(!strcmp(cmd_name, "quit")){
+                bzero(buf, sizeof(buf));
+                k = read(sock, buf, sizeof(buf));
+                error(k, -1, "Reading failed.\n");
+                printf("Server's response: %s\n", buf);
                 logged = 0;
                 session = 0;
                 shutdown(sock, SHUT_RDWR);
                 close(sock);
-                return 0;       // kill the client
+                return 0;               // kill the client
+            } else if(!strcmp(cmd_name, "pwd")){
+                bzero(buf, sizeof(buf));
+                k = read(sock, buf, sizeof(buf));
+                error(k, -1, "Reading failed.\n");
+                printf("Server's response: %s\n", buf);
+            } else if(!strcmp(cmd_name, "cd")){
+                bzero(buf, sizeof(buf));
+                k = read(sock, buf, sizeof(buf));
+                error(k, -1, "Reading failed.\n");
+                printf("Server's response: %s\n", buf);
+            } else if(!strcmp(cmd_name, "ls")){
+                /* Receive file containing ls result and print it */
+                recv(sock, &size, sizeof(int), 0);
+                f = malloc(size);
+                recv(sock, f, size, 0);
+                filehandle = creat("temp.txt", O_WRONLY);
+                k = write(filehandle, f, size);
+                error(k, -1, "Reading failed.\n");
+                close(filehandle);
+                printf("The remote directory listing is as follows:\n");
+                system("chmod 777 temp.txt");
+                system("cat temp.txt");
+                k = remove("temp.txt");
+                error(k, -1, "temp.txt remove failed.\n");
+            } else {
+                printf("Command not found\n");
             }
         }
     }
