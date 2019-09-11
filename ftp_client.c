@@ -158,15 +158,17 @@ int main(int argc, char *argv[]){
             } else if(!strcmp(cmd_name, "ls")){
                 /* Receive file containing ls result and print it */
                 recv(sock, &size, sizeof(int), 0);
+                printf("Size received: %d\n", size);
                 if(size != 0){
                     f = malloc(size);
                     recv(sock, f, size, 0);
                     filehandle = creat("temp.txt", O_WRONLY);
+                    error(filehandle, -1, "Creating temp.txt failed.\n");
+                    system("chmod 777 temp.txt");
                     k = write(filehandle, f, size);
                     error(k, -1, "Reading failed.\n");
                     close(filehandle);
                     printf("The remote directory listing is as follows:\n");
-                    system("chmod 777 temp.txt");
                     system("cat temp.txt");
                     k = remove("temp.txt");
                     error(k, -1, "temp.txt remove failed.\n");

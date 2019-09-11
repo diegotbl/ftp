@@ -2,6 +2,7 @@
 #include<sys/socket.h>
 #include<sys/stat.h>
 #include<sys/sendfile.h>
+#include<sys/syscall.h>
 #include<netinet/in.h>
 #include<string.h>
 #include<stdio.h>
@@ -10,6 +11,8 @@
 #include<unistd.h>
 #include<pthread.h>
 #include<fcntl.h>
+#include<dirent.h>     /* Defines DT_* constants */
+#include<errno.h>
 
 typedef struct {
     int sock;
@@ -17,11 +20,20 @@ typedef struct {
     char original_dir[50];
 } client_info;
 
+struct linux_dirent {
+   long           d_ino;
+   off_t          d_off;
+   unsigned short d_reclen;
+   char           d_name[];
+};
+
 void error(int a, int b, char * msg){
     if(a == b){
         printf("\nERROR: %s", msg);
+        printf("Errno: %s\n", strerror(errno));
         exit(1);
     }
+
     return;
 }
 
@@ -113,48 +125,109 @@ int auth(char * username, char * password, FILE * cred_file){
     return 0;
 }
 
-void ls(char * ptr, int sock_fd){
+void ls(char * ptr, int sock_fd, char * my_path){
     char command[50], size_str[10];
     struct stat obj;
     int size, err;
     int filehandle;
-    FILE * fd;
+    FILE * generated_file;
 
-    if(ptr == NULL){
-        strcpy(command, "ls >temps.txt");
-        err = system(command);
+    generated_file = fopen("temps.txt", "w");
+    if(generated_file == NULL){
+        printf("Error generating temps.txt.\n");
+        printf("Errno: %s\n", strerror(errno));
     }
-    else {
-        strcpy(command, "ls ");
-        strcat(command, ptr);
-        strcat(command, " >temps.txt");
-        err = system(command);
-    }
-    printf("cat temps.txt\n");
-    system("cat temps.txt");
-    printf("\nend cat temps.txt\n");
 
-    // parse file to remove "temps.txt" entry from itself
-    if(err == 0)       // No error in ls
-        parse_file("temps.txt");
-    else {
-        printf("Path not found\n");
-        fd = fopen("parsed.txt", "w");
-        fprintf(fd, "Path not found\n");
-        fclose(fd);
+    int nread;
+    struct linux_dirent *d;
+    char d_type;
+    char buf[100];
+    char path[100];
+    int fd;
+
+    strcpy(path, my_path);
+    if(ptr != NULL){
+        strcat(path, "/");
+        strcat(path, ptr);
     }
+    fd = open(path, O_RDONLY);
+    if(fd == -1)
+        fprintf(generated_file, "Path not found\n");
+    else {
+        while(1){
+            nread = syscall(SYS_getdents, fd, buf, sizeof(buf));
+            error(nread, -1, "getdents failed.");
+
+            printf("nread = %d\n", nread);
+
+            if(nread == 0)
+                break;
+
+            for(int bpos = 0; bpos < nread;) {
+                d = (struct linux_dirent *) (buf + bpos);
+                d_type = *(buf + bpos + d->d_reclen - 1);
+                if(strcmp(d->d_name, ".") && strcmp(d->d_name, "..")){
+                    printf("%s\n", d->d_name);
+                    fprintf(generated_file, "%s\n", d->d_name);
+                }
+                bpos += d->d_reclen;
+            }
+        }
+    }
+    fclose(generated_file);
+
+    parse_file("temps.txt");
+
     printf("cat parsed.txt\n");
     system("cat parsed.txt");
-    printf("\nend cat parsed.txt\n");
+    printf("end cat parsed.txt\n");
+
     stat("parsed.txt", &obj);
     size = obj.st_size;
+    printf("size = %d\nSending size info\n", size);
     send(sock_fd, &size, sizeof(int), 0);
+    printf("Size sent\nOpening\n");
     filehandle = open("parsed.txt", O_RDONLY);
+    printf("Opened\nSending file\n");
     sendfile(sock_fd, filehandle, NULL, size);
+    printf("File sent\n");
+
     err = remove("temps.txt");
     error(err, -1, "temps.txt remove failed.\n");
     err = remove("parsed.txt");
     error(err, -1, "parsed.txt remove failed.\n");
+
+    // if(ptr == NULL){
+    //     strcpy(command, "ls >temps.txt");
+    //     err = system(command);
+    // }
+    // else {
+    //     strcpy(command, "ls ");
+    //     strcat(command, ptr);
+    //     strcat(command, " >temps.txt");
+    //     err = system(command);
+    // }
+    // printf("cat temps.txt\n");
+    // system("cat temps.txt");
+    // printf("\nend cat temps.txt\n");
+    //
+    // // parse file to remove "temps.txt" entry from itself
+    // if(err == 0)       // No error in ls
+    //     parse_file("temps.txt");
+    // else {
+    //     printf("Path not found\n");
+    //     fd = fopen("parsed.txt", "w");
+    //     fprintf(fd, "Path not found\n");
+    //     fclose(fd);
+    // }
+    // printf("cat parsed.txt\n");
+    // system("cat parsed.txt");
+    // printf("\nend cat parsed.txt\n");
+    // stat("parsed.txt", &obj);
+    // size = obj.st_size;
+    // send(sock_fd, &size, sizeof(int), 0);
+    // filehandle = open("parsed.txt", O_RDONLY);
+    // sendfile(sock_fd, filehandle, NULL, size);
 
     return;
 }
@@ -267,7 +340,7 @@ void * handle_client(void * args){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
             printf("param: %s\n", ptr);
-            ls(ptr, info->sock);
+            ls(ptr, info->sock, my_path);
         } else if(!strcmp(cmd_name, "close")){
             printf("Command sent from client: %s. Client disconnected.\n", buf);
             err = write(info->sock, "530", 3);
