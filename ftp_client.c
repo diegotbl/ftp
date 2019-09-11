@@ -50,7 +50,7 @@ int main(int argc, char *argv[]){
     char * ptr;
 
     bzero(buf, sizeof(buf));
-    while(session == 0 && strcmp(buf, "close")){
+    while(session == 0 && strcmp(buf, "quit")){
         // Create socket. Same as ftp_server.c
         sock = socket(AF_INET, SOCK_STREAM, 0);
         error(sock, -1, "Socket creation failed.\n");
@@ -60,7 +60,7 @@ int main(int argc, char *argv[]){
         server.sin_port = htons(port);                  // bind to port
         server.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-        printf("Type 'open' to start a conection or 'close' to leave> ");
+        printf("Type 'open' to start a conection or 'quit' to leave> ");
         bzero(buf, sizeof(buf));
         fgets(buf, sizeof(buf), stdin);
         buf[strlen(buf)-1] = '\0';        // Remove line feed
@@ -158,17 +158,19 @@ int main(int argc, char *argv[]){
             } else if(!strcmp(cmd_name, "ls")){
                 /* Receive file containing ls result and print it */
                 recv(sock, &size, sizeof(int), 0);
-                f = malloc(size);
-                recv(sock, f, size, 0);
-                filehandle = creat("temp.txt", O_WRONLY);
-                k = write(filehandle, f, size);
-                error(k, -1, "Reading failed.\n");
-                close(filehandle);
-                printf("The remote directory listing is as follows:\n");
-                system("chmod 777 temp.txt");
-                system("cat temp.txt");
-                k = remove("temp.txt");
-                error(k, -1, "temp.txt remove failed.\n");
+                if(size != 0){
+                    f = malloc(size);
+                    recv(sock, f, size, 0);
+                    filehandle = creat("temp.txt", O_WRONLY);
+                    k = write(filehandle, f, size);
+                    error(k, -1, "Reading failed.\n");
+                    close(filehandle);
+                    printf("The remote directory listing is as follows:\n");
+                    system("chmod 777 temp.txt");
+                    system("cat temp.txt");
+                    k = remove("temp.txt");
+                    error(k, -1, "temp.txt remove failed.\n");
+                } else printf("\n");
             } else {
                 printf("Command not found\n");
             }

@@ -61,22 +61,21 @@ char* itoa(int value, char* result, int base) {
 
 void parse_file(char * name){
     FILE * fd, * parsed;
-    char line[100], last_line[100];
+    char line[100], last_line[100], * buf;
+    int n;
 
     strcpy(last_line, "\0");
 
     fd = fopen(name, "r");
     parsed = fopen("parsed.txt", "w");
 
-    while(!feof(fd)){
-        fgets(line, 100, fd);
+    while(fgets(line, sizeof(line), fd) != NULL){
         // Remove line feed if needed
         if(iscntrl(line[strlen(line)-1]))
             line[strlen(line)-1] = '\0';
         printf("%s\n", line);
-        if(strcmp(line, name) && strcmp(line, last_line))
+        if(strcmp(line, name))
             fprintf(parsed, "%s\n", line);
-        strcpy(last_line, line);
     }
 
     fclose(fd);
@@ -89,8 +88,7 @@ int auth(char * username, char * password, FILE * cred_file){
     char * ptr;
     const char delim[2] = " ";
 
-    while(!feof(cred_file)){
-        fgets(line, 100, cred_file);
+    while(fgets(line, 100, cred_file) != NULL){
         // Remove line feed if needed
         if(iscntrl(line[strlen(line)-1]))
             line[strlen(line)-1] = '\0';
@@ -132,6 +130,9 @@ void ls(char * ptr, int sock_fd){
         strcat(command, " >temps.txt");
         err = system(command);
     }
+    printf("cat temps.txt\n");
+    system("cat temps.txt");
+    printf("\nend cat temps.txt\n");
 
     // parse file to remove "temps.txt" entry from itself
     if(err == 0)       // No error in ls
@@ -142,6 +143,9 @@ void ls(char * ptr, int sock_fd){
         fprintf(fd, "Path not found\n");
         fclose(fd);
     }
+    printf("cat parsed.txt\n");
+    system("cat parsed.txt");
+    printf("\nend cat parsed.txt\n");
     stat("parsed.txt", &obj);
     size = obj.st_size;
     send(sock_fd, &size, sizeof(int), 0);
