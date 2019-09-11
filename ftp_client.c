@@ -35,6 +35,28 @@ void error(int a, int b, char * msg){
     return;
 }
 
+void receive_and_print_file_response(int sock){
+    int size, k;
+    char *f;
+    int filehandle;
+
+    recv(sock, &size, sizeof(int), 0);
+    printf("Size received: %d\n", size);
+    if(size != 0){
+        f = malloc(size);
+        recv(sock, f, size, 0);
+        filehandle = creat("temp.txt", O_WRONLY);
+        error(filehandle, -1, "Creating temp.txt failed.\n");
+        system("chmod 777 temp.txt");
+        k = write(filehandle, f, size);
+        error(k, -1, "Reading failed.\n");
+        close(filehandle);
+        system("cat temp.txt");
+        k = remove("temp.txt");
+        error(k, -1, "temp.txt remove failed.\n");
+    } else printf("\n");
+}
+
 int main(int argc, char *argv[]){
     struct sockaddr_in server;
     int sock;
@@ -156,52 +178,16 @@ int main(int argc, char *argv[]){
                 error(k, -1, "Reading failed.\n");
                 printf("Server's response: %s\n", buf);
             } else if(!strcmp(cmd_name, "ls")){
-                /* Receive file containing ls result and print it */
-                recv(sock, &size, sizeof(int), 0);
-                printf("Size received: %d\n", size);
-                if(size != 0){
-                    f = malloc(size);
-                    recv(sock, f, size, 0);
-                    filehandle = creat("temp.txt", O_WRONLY);
-                    error(filehandle, -1, "Creating temp.txt failed.\n");
-                    system("chmod 777 temp.txt");
-                    k = write(filehandle, f, size);
-                    error(k, -1, "Reading failed.\n");
-                    close(filehandle);
-                    printf("The remote directory listing is as follows:\n");
-                    system("cat temp.txt");
-                    k = remove("temp.txt");
-                    error(k, -1, "temp.txt remove failed.\n");
-                } else printf("\n");
+                /* Receive file containing result and print it */
+                receive_and_print_file_response(sock);
+            } else if(!strcmp(cmd_name, "delete")){
+                /* Receive file containing result and print it */
+                receive_and_print_file_response(sock);
             } else {
                 printf("Command not found\n");
             }
         }
     }
-
-    // while(session){
-    //     while(logged){
-    //         // Read command form stdin
-    //         printf("ftp> ");
-    //         bzero(buf, sizeof(buf));
-    //         fgets(buf, sizeof(buf)-1, stdin);
-    //         printf("command read: %s\n", buf);
-    //
-    //         printf("\nsending buf: %s\n", buf);
-    //         k = write(sock, buf, sizeof(buf));
-    //         error(k, -1, "Sending failed.\n");
-    //
-    //         bzero(buf, sizeof(buf));
-    //         k = read(sock, buf, sizeof(buf));
-    //         error(k, -1, "Reading failed.\n");
-    //
-    //         printf("Server's response: %s\n", buf);
-    //
-    //     }
-    //
-    //     printf("Not logged in.\n");
-    // }
-
 
     // while(1){
     //     // Read command form stdin
@@ -283,44 +269,6 @@ int main(int argc, char *argv[]){
     //             else
     //                 printf("File failed to be stored to remote machine\n");
     //             break;
-    //         case 3:
-    //             strcpy(buf, "pwd");
-    //             send(sock, buf, 100, 0);
-    //             recv(sock, buf, 100, 0);
-    //             printf("The path of the remote directory is: %s\n", buf);
-    //             break;
-    //         case 4:
-    //             strcpy(buf, "ls");
-    //             send(sock, buf, 100, 0);
-    //             recv(sock, &size, sizeof(int), 0);
-    //             f = malloc(size);
-    //             recv(sock, f, size, 0);
-    //             // filehandle = creat("temp.txt", O_WRONLY);
-    //             // fwrite(filehandle, f, size, 0);
-    //             // close(filehandle);
-    //             printf("The remote directory listing is as follows:\n");
-    //             system("cat temp.txt");
-    //             break;
-    //         case 5:
-    //             strcpy(buf, "cd ");
-    //             printf("Enter the path to change the remote directory: ");
-    //             scanf("%s", buf + 3);
-    //             send(sock, buf, 100, 0);
-    //             recv(sock, &status, sizeof(int), 0);
-    //             if(status)
-    //                 printf("Remote directory successfully changed\n");
-    //             else
-    //                 printf("Remote directory failed to change\n");
-    //             break;
-    //         case 6:
-    //             strcpy(buf, "quit");
-    //             send(sock, buf, 100, 0);
-    //             recv(sock, &status, 100, 0);
-    //             if(status){
-    //                 printf("Server closed\nQuitting..\n");
-    //                 exit(0);
-    //             }
-    //             printf("Server failed to close connection\n");
     //     }
     // }
 }
