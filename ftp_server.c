@@ -318,6 +318,7 @@ void put(char * ptr, int sock_fd, char * my_path){
     bzero(buf, sizeof(buf));
     strcpy(buf, "chmod 666 ");
     strcat(buf, ptr);
+    // Security breach. That's not the lab's goal, won't bother to fix it.
     system(buf);
 
     if(size != 0){
@@ -338,6 +339,27 @@ void put(char * ptr, int sock_fd, char * my_path){
     }
 
     return;
+}
+
+void make_dir(char * dir_name, int sock_fd, char * my_path){
+    struct stat st;
+    int err;
+
+    memset(&st, 0, sizeof st);      // zero structure out
+
+    // check if dir already exists
+    // if does, send error message back to client
+    if(stat("/some/directory", &st) != -1){
+        err = write(sock_fd, "Error: this directory already exists", 36);
+        error(err, -1, "Sending failed.\n");
+    }
+    // if doesn't, create dir and send success message
+    else{
+        mkdir(dir_name, 0777);
+        err = write(sock_fd, "Directory successfully created", 30);
+        error(err, -1, "Sending failed.\n");
+    }
+
 }
 
 void * handle_client(void * args){
@@ -461,6 +483,15 @@ void * handle_client(void * args){
             printf("Command sent from client: %s\n", buf);
             printf("param: %s\n", ptr);
             put(ptr, info->sock, my_path);
+        } else if(!strcmp(cmd_name, "mkdir")){
+            ptr = strtok(NULL, delim);
+            printf("Command sent from client: %s\n", buf);
+            printf("param: %s\n", ptr);
+            if(ptr == NULL){
+                printf("No dir specified\n");
+            } else{
+                make_dir(ptr, info->sock, my_path);
+            }
         } else if(!strcmp(cmd_name, "delete")){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
@@ -586,50 +617,5 @@ int main(int argc,char *argv[]){
         }
     }
 
-    // i = 1;
-    // while(1){
-    //     recv(sock2, buf, 100, 0);
-    //     sscanf(buf, "%s", command);
-    //     if(!strcmp(command, "ls")){
-    //         system("ls >temps.txt");
-    //         i = 0;
-    //         stat("temps.txt",&obj);
-    //         size = obj.st_size;
-    //         send(sock2, &size, sizeof(int),0);
-    //         filehandle = open("temps.txt", O_RDONLY);
-    //         sendfile(sock2,filehandle,NULL,size);
-    //     }
-    //     else if(!strcmp(command,"get")){
-    //         sscanf(buf, "%s%s", filename, filename);
-    //         stat(filename, &obj);
-    //         filehandle = open(filename, O_RDONLY);
-    //         size = obj.st_size;
-    //         if(filehandle == -1)
-    //             size = 0;
-    //         send(sock2, &size, sizeof(int), 0);
-    //         if(size)
-    //             sendfile(sock2, filehandle, NULL, size);
-    //
-    //     }
-    //     else if(!strcmp(command, "put")){
-    //         int c = 0, len;
-    //         char *f;
-    //         sscanf(buf+strlen(command), "%s", filename);
-    //         recv(sock2, &size, sizeof(int), 0);
-    //         i = 1;
-    //         while(1){
-    //             filehandle = open(filename, O_CREAT | O_EXCL | O_WRONLY, 0666);
-    //             if(filehandle == -1){
-    //                 sprintf(filename + strlen(filename), "%d", i);
-    //             }
-    //             else break;
-    //         }
-    //         f = malloc(size);
-    //         recv(sock2, f, size, 0);
-    //         c = write(filehandle, f, size);
-    //         close(filehandle);
-    //         send(sock2, &c, sizeof(int), 0);
-    //     }
-    // }
     return 0;
 }

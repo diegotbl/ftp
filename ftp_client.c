@@ -292,6 +292,14 @@ int main(int argc, char *argv[]){
             } else if(!strcmp(cmd_name, "ls")){
                 /* Receive file containing result and print it */
                 receive_and_print_file_response(sock);
+            } else if(!strcmp(cmd_name, "mkdir")){
+                ptr = strtok(NULL, delim);
+                if(ptr == NULL){
+                    printf("Specify a directory to create\n");
+                } else{
+                    recv(sock, buf, sizeof(buf), 0);
+                    printf("Server's response: %s\n", buf);
+                }
             } else if(!strcmp(cmd_name, "delete")){
                 /* Receive file containing result and print it */
                 receive_and_print_file_response(sock);
@@ -354,87 +362,4 @@ int main(int argc, char *argv[]){
             }
         }
     }
-
-    // while(1){
-    //     // Read command form stdin
-    //     printf("ftp> ");
-    //     bzero(buf, sizeof(buf));
-    //     fgets(buf, sizeof(buf)-1, stdin);
-    //     printf("command read: %s\n", buf);
-    //
-    //     // Extract command name from input
-    //     bzero(cmd_name, sizeof(cmd_name));
-    //     strcpy(cmd_name, buf);
-    //     ptr = strtok(cmd_name, delim);
-    //     printf("cmd_name: %s\n", cmd_name);
-    //
-    //     // pwd
-    //     if(!strcmp(cmd_name, "pwd")){
-    //         printf("\nsending buf: %s\n", buf);
-    //         k = write(sock, buf, sizeof(buf));
-    //         error(k, -1, "Sending failed.\n");
-    //
-    //         bzero(buf, sizeof(buf));
-    //         k = read(sock, buf, sizeof(buf)-1);
-    //         error(k, -1, "Reading failed.\n");
-    //
-    //         printf("Server's response: %s\n", buf);
-    //     }
-    //     else printf("Not implemented yet\n");
-    // }
-
-    // int i = 1;
-    // while(1){
-    //     printf("Enter a choice:\n1- get\n2- put\n3- pwd\n4- ls\n5- cd\n6- quit\n");
-    //     scanf("%d", &choice);
-    //     switch(choice){
-    //         case 1:
-    //             printf("Enter filename to get: ");
-    //             scanf("%s", filename);
-    //             strcpy(buf, "get ");
-    //             strcat(buf, filename);
-    //             send(sock, buf, 100, 0);
-    //             recv(sock, &size, sizeof(int), 0);
-    //             if(!size){
-    //                 printf("No such file on the remote directory\n\n");
-    //                 break;
-    //             }
-    //             f = malloc(size);
-    //             recv(sock, f, size, 0);
-    //             while(1){
-    //                 filehandle = open(filename, O_CREAT | O_EXCL | O_WRONLY, 0666);
-    //                 if(filehandle == -1){
-    //                     sprintf(filename + strlen(filename), "%d", i);//needed only if same directory is used for both server and client
-    //                 }
-    //                 else break;
-    //             }
-    //             // fwrite(filehandle, f, size, 0);
-    //             // close(filehandle);
-    //             strcpy(buf, "cat ");
-    //             strcat(buf, filename);
-    //             system(buf);
-    //             break;
-    //         case 2:
-    //             printf("Enter filename to put to server: ");
-    //             scanf("%s", filename);
-    //             filehandle = open(filename, O_RDONLY);
-    //             if(filehandle == -1){
-    //                 printf("No such file on the local directory\n\n");
-    //                 break;
-    //             }
-    //             strcpy(buf, "put ");
-    //             strcat(buf, filename);
-    //             send(sock, buf, 100, 0);
-    //             stat(filename, &obj);
-    //             size = obj.st_size;
-    //             send(sock, &size, sizeof(int), 0);
-    //             sendfile(sock, filehandle, NULL, size);
-    //             recv(sock, &status, sizeof(int), 0);
-    //             if(status)
-    //                 printf("File stored successfully\n");
-    //             else
-    //                 printf("File failed to be stored to remote machine\n");
-    //             break;
-    //     }
-    // }
 }
