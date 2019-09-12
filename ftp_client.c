@@ -25,6 +25,8 @@
 /* for read and write */
 #include <unistd.h>
 
+#define FILE_NOT_FOUND      9385615
+
 void error(int a, int b, char * msg){
     if(a == b){
         printf("\nERROR: %s", msg);
@@ -55,6 +57,52 @@ void receive_and_print_file_response(int sock){
         k = remove("temp.txt");
         error(k, -1, "temp.txt remove failed.\n");
     } else printf("\n");
+}
+
+void get_file_response(int sock, char * param){
+    int size, k;
+    char *f;
+    char buf[100];
+    int filehandle;
+
+    recv(sock, &size, sizeof(int), 0);
+    printf("Size received: %d\n", size);
+
+
+    if(size != 0 && size != FILE_NOT_FOUND){
+        filehandle = creat(param, O_WRONLY);
+        error(filehandle, -1, "File creation failed.\n");
+        bzero(buf, sizeof(buf));
+        strcpy(buf, "chmod 666 ");
+        strcat(buf, param);
+        // There is no problem using system with the user-input string param
+        // (the file name) since this is running on client machine.
+        system(buf);
+        f = malloc(size);
+        recv(sock, f, size, 0);
+        k = write(filehandle, f, size);
+        error(k, -1, "Reading failed.\n");
+        close(filehandle);
+        bzero(buf, sizeof(buf));
+        strcpy(buf, "cat ");
+        strcat(buf, param);
+        system(buf);
+        printf("File successfully copied to local machine\n");
+    } else if(size == FILE_NOT_FOUND){
+        printf("File not found\n");
+    } else {        // File with 0 bytes
+        filehandle = creat(param, O_WRONLY);
+        error(filehandle, -1, "File creation failed.\n");
+        bzero(buf, sizeof(buf));
+        strcpy(buf, "chmod 666 ");
+        strcat(buf, param);
+        // There is no problem using system with the user-input string param
+        // (the file name) since this is running on client machine.
+        system(buf);
+        k = write(filehandle, "", size);
+        close(filehandle);
+        printf("File successfully copied to local machine. This file was empty\n");
+    }
 }
 
 int main(int argc, char *argv[]){
@@ -142,7 +190,7 @@ int main(int argc, char *argv[]){
             ptr = strtok(cmd_name, delim);
             printf("cmd_name: %s\n", cmd_name);
             if(iscntrl(cmd_name[strlen(cmd_name)-1]))   // Remove line feed if needed
-                cmd_name[strlen(cmd_name)-1] = '\0';    // Remove line feed
+                cmd_name[strlen(cmd_name)-1] = '\0';
 
             printf("\nsending buf: %s\n", buf);
             k = write(sock, buf, sizeof(buf));
@@ -183,6 +231,19 @@ int main(int argc, char *argv[]){
             } else if(!strcmp(cmd_name, "delete")){
                 /* Receive file containing result and print it */
                 receive_and_print_file_response(sock);
+            } else if(!strcmp(cmd_name, "get")){
+                /* Receive file and store it */
+                ptr = strtok(NULL, delim);
+                if(iscntrl(ptr[strlen(ptr)-1]))   // Remove line feed if needed
+                    ptr[strlen(ptr)-1] = '\0';    // Remove line feed
+                for(int i = 0 ; i < 12 ; i++){
+                    printf("ptr[%d] = %c : %d\n", i, ptr[i], ptr[i]);
+                }
+                if(ptr == NULL){
+                    printf("File not specified. Choose a file to get\n");
+                } else {
+                    get_file_response(sock, ptr);
+                }
             } else {
                 printf("Command not found\n");
             }

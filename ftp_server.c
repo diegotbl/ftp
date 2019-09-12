@@ -14,6 +14,8 @@
 #include<dirent.h>     /* Defines DT_* constants */
 #include<errno.h>
 
+#define FILE_NOT_FOUND      9385615
+
 typedef struct {
     int sock;
     char base_dir[50];
@@ -238,6 +240,40 @@ void delete(char * ptr, int sock_fd, char * my_path){
     return;
 }
 
+void get(char * ptr, int sock_fd, char * my_path){
+    char buf[100], file_path[100], file_to_send[100];
+    struct stat obj;
+    int size, err;
+    int filehandle;
+    FILE * generated_file;
+    int fd;
+
+    strcpy(file_path, my_path);
+    strcat(file_path, "/");
+    strcat(file_path, ptr);
+    printf("file_path: %s\n", file_path);
+    printf("access: %d\n", access(file_path, F_OK));
+    if(access(file_path, F_OK) != -1){
+        printf("cat %s\n", file_path);
+        strcpy(buf, "cat ");
+        strcat(buf, file_path);
+        system(buf);
+        printf("end cat %s\n", file_path);
+        stat(file_path, &obj);
+        size = obj.st_size;
+        send(sock_fd, &size, sizeof(int), 0);
+        filehandle = open(file_path, O_RDONLY);
+        sendfile(sock_fd, filehandle, NULL, size);
+    } else {
+        size = FILE_NOT_FOUND;
+        send(sock_fd, &size, sizeof(int), 0);
+        filehandle = open(file_path, O_RDONLY);
+        sendfile(sock_fd, filehandle, NULL, 0);
+    }
+
+    return;
+}
+
 void * handle_client(void * args){
     int err, i, size, len, c, j;
     int logged = 0;
@@ -302,6 +338,8 @@ void * handle_client(void * args){
         err = read(info->sock, buf, sizeof(buf));
         error(err, -1, "Reading failed.\n");
 
+        ptr = NULL;
+
         if(buf[0] == '\0')         // Means client killed program
             pthread_exit(&retval);  // Close thread and wait for new connection
 
@@ -347,6 +385,11 @@ void * handle_client(void * args){
             printf("Command sent from client: %s\n", buf);
             printf("param: %s\n", ptr);
             ls(ptr, info->sock, my_path);
+        } else if(!strcmp(cmd_name, "get")){
+            ptr = strtok(NULL, delim);
+            printf("Command sent from client: %s\n", buf);
+            printf("param: %s\n", ptr);
+            get(ptr, info->sock, my_path);
         } else if(!strcmp(cmd_name, "delete")){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
