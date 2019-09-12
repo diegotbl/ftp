@@ -62,22 +62,33 @@ void receive_and_print_file_response(int sock){
 void get_file_response(int sock, char * param){
     int size, k;
     char *f;
-    char buf[100];
+    char buf[100], file_path[100];
     int filehandle;
 
     recv(sock, &size, sizeof(int), 0);
     printf("Size received: %d\n", size);
 
+    if(size == FILE_NOT_FOUND){
+        printf("File not found\n");
+        return;
+    }
 
-    if(size != 0 && size != FILE_NOT_FOUND){
-        filehandle = creat(param, O_WRONLY);
-        error(filehandle, -1, "File creation failed.\n");
-        bzero(buf, sizeof(buf));
-        strcpy(buf, "chmod 666 ");
-        strcat(buf, param);
-        // There is no problem using system with the user-input string param
-        // (the file name) since this is running on client machine.
-        system(buf);
+    getcwd(file_path, sizeof(file_path));
+    strcat(file_path, "/");
+    strcat(file_path, param);
+
+    printf("file_path: %s\n", file_path);
+
+    filehandle = creat(file_path, O_WRONLY);
+    error(filehandle, -1, "File creation failed.\n");
+    bzero(buf, sizeof(buf));
+    strcpy(buf, "chmod 666 ");
+    strcat(buf, param);
+    // There is no problem using system with the user-input string param
+    // (the file name) since this is running on client machine.
+    system(buf);
+
+    if(size != 0){
         f = malloc(size);
         recv(sock, f, size, 0);
         k = write(filehandle, f, size);
@@ -85,31 +96,63 @@ void get_file_response(int sock, char * param){
         close(filehandle);
         bzero(buf, sizeof(buf));
         strcpy(buf, "cat ");
-        strcat(buf, param);
+        strcat(buf, file_path);
         system(buf);
         printf("File successfully copied to local machine\n");
-    } else if(size == FILE_NOT_FOUND){
-        printf("File not found\n");
     } else {        // File with 0 bytes
-        filehandle = creat(param, O_WRONLY);
-        error(filehandle, -1, "File creation failed.\n");
-        bzero(buf, sizeof(buf));
-        strcpy(buf, "chmod 666 ");
-        strcat(buf, param);
-        // There is no problem using system with the user-input string param
-        // (the file name) since this is running on client machine.
-        system(buf);
         k = write(filehandle, "", size);
         close(filehandle);
         printf("File successfully copied to local machine. This file was empty\n");
     }
+    return;
+}
+
+void read_and_ignore(int sock){
+    int size;
+    char *f;
+
+    recv(sock, &size, sizeof(int), 0);
+    printf("Size received: %d\n", size);
+    if(size != 0){
+        f = malloc(size);
+        recv(sock, f, size, 0);
+    }
+
+    return;
+}
+
+void put_file_in_server(int sock, char * ptr) {
+    struct stat obj;
+    int size, filehandle;
+
+    // Check if file exists locally
+    printf("file_path: %s\n", ptr);
+    printf("access: %d\n", access(ptr, F_OK));
+    if(access(ptr, F_OK) != -1){
+        // Send amount of bytes to server
+        stat(ptr, &obj);
+        size = obj.st_size;
+        send(sock, &size, sizeof(int), 0);
+
+        // Send file to server
+        filehandle = open(ptr, O_RDONLY);
+        error(filehandle, -1, "Couldn't open file.");
+        sendfile(sock, filehandle, NULL, size);
+    } else {
+        // Send 0 to server
+        size = FILE_NOT_FOUND;
+        send(sock, &size, sizeof(int), 0);
+
+        printf("File not found\n");
+    }
+    return;
 }
 
 int main(int argc, char *argv[]){
     struct sockaddr_in server;
     int sock;
     unsigned short port = 2121;     // We will use port 2121
-    char buf[100], command[100], cmd_name[100], filename[20], *f;
+    char buf[100], command[100], cmd_name[100], filename[20], *f, ans;
     int k, size, status;
     int logged = 0, session = 0;
     struct stat obj;
@@ -234,6 +277,32 @@ int main(int argc, char *argv[]){
             } else if(!strcmp(cmd_name, "get")){
                 /* Receive file and store it */
                 ptr = strtok(NULL, delim);
+                if(ptr != NULL){
+                    if(iscntrl(ptr[strlen(ptr)-1]))   // Remove line feed if needed
+                        ptr[strlen(ptr)-1] = '\0';
+                    printf("access: %d\n", access(ptr, F_OK));
+                    if(access(ptr, F_OK) != -1){
+                        printf("There is a file with the same name in machine. Do you want to overwrite it? [y/n]\n");
+                        ans = 'a';
+                        while(ans != 'y' && ans != 'n'){
+                            scanf("%c", &ans);
+                            getchar();
+                        }
+                        if(ans == 'y'){
+                            get_file_response(sock, ptr);
+                        } else if(ans == 'n'){
+                            read_and_ignore(sock);
+                        }
+                    } else {
+                        get_file_response(sock, ptr);
+                    }
+                }
+                else {
+                    printf("File not specified. Choose a file to get\n");
+                }
+            } else if(!strcmp(cmd_name, "put")){
+                /* Send file to server */
+                ptr = strtok(NULL, delim);
                 if(iscntrl(ptr[strlen(ptr)-1]))   // Remove line feed if needed
                     ptr[strlen(ptr)-1] = '\0';    // Remove line feed
                 for(int i = 0 ; i < 12 ; i++){
@@ -242,7 +311,7 @@ int main(int argc, char *argv[]){
                 if(ptr == NULL){
                     printf("File not specified. Choose a file to get\n");
                 } else {
-                    get_file_response(sock, ptr);
+                    put_file_in_server(sock, ptr);
                 }
             } else {
                 printf("Command not found\n");

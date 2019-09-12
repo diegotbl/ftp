@@ -248,6 +248,11 @@ void get(char * ptr, int sock_fd, char * my_path){
     FILE * generated_file;
     int fd;
 
+    if(ptr == NULL){
+        printf("No file specified\n");
+        return;
+    }
+
     strcpy(file_path, my_path);
     strcat(file_path, "/");
     strcat(file_path, ptr);
@@ -269,6 +274,50 @@ void get(char * ptr, int sock_fd, char * my_path){
         send(sock_fd, &size, sizeof(int), 0);
         filehandle = open(file_path, O_RDONLY);
         sendfile(sock_fd, filehandle, NULL, 0);
+    }
+
+    return;
+}
+
+void put(char * ptr, int sock_fd, char * my_path){
+    char buf[100], file_path[100], file_to_send[100], *f;
+    struct stat obj;
+    int size, err;
+    int filehandle;
+    FILE * generated_file;
+    int fd;
+
+    // Receive size of file
+    recv(sock_fd, &size, sizeof(int), 0);
+    printf("Size received: %d\n", size);
+
+    if(size == FILE_NOT_FOUND){
+        printf("No file created\n");
+        return;
+    }
+
+    filehandle = creat(ptr, O_WRONLY);
+    error(filehandle, -1, "File creation failed.\n");
+    bzero(buf, sizeof(buf));
+    strcpy(buf, "chmod 666 ");
+    strcat(buf, ptr);
+    system(buf);
+
+    if(size != 0){
+        f = malloc(size);
+        recv(sock_fd, f, size, 0);
+        err = write(filehandle, f, size);
+        error(err, -1, "Reading failed.\n");
+        close(filehandle);
+        bzero(buf, sizeof(buf));
+        strcpy(buf, "cat ");
+        strcat(buf, ptr);
+        system(buf);
+        printf("File successfully copied to server\n");
+    } else {        // File with 0 bytes
+        write(filehandle, "", size);
+        close(filehandle);
+        printf("File successfully copied to server. This file was empty\n");
     }
 
     return;
@@ -390,6 +439,11 @@ void * handle_client(void * args){
             printf("Command sent from client: %s\n", buf);
             printf("param: %s\n", ptr);
             get(ptr, info->sock, my_path);
+        } else if(!strcmp(cmd_name, "put")){
+            ptr = strtok(NULL, delim);
+            printf("Command sent from client: %s\n", buf);
+            printf("param: %s\n", ptr);
+            put(ptr, info->sock, my_path);
         } else if(!strcmp(cmd_name, "delete")){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
@@ -407,8 +461,6 @@ void * handle_client(void * args){
             logged = 0;
         } else {
             printf("Command sent from client: %s\n", buf);
-            err = write(info->sock, "Not implemented yet", 19);
-            error(err, -1, "Sending failed.\n");
         }
     }
 
