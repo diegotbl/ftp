@@ -155,9 +155,9 @@ void put_file_in_server(int sock, char * ptr, int ovwrt) {
 }
 
 int main(int argc, char *argv[]){
-    struct sockaddr_in server;
+    struct addrinfo hints, *server;
     int sock;
-    unsigned short port = 2121;     // We will use port 2121
+    // unsigned short port = 2121;     // We will use port 2121
     char buf[100], command[100], cmd_name[100], filename[20], *f, ans;
     int k, size, status, exists_in_server;
     int logged = 0, session = 0;
@@ -170,62 +170,76 @@ int main(int argc, char *argv[]){
 
     bzero(buf, sizeof(buf));
     while(session == 0 && strcmp(buf, "quit")){
-        // Create socket. Same as ftp_server.c
-        sock = socket(AF_INET, SOCK_STREAM, 0);
-        error(sock, -1, "Socket creation failed.\n");
-
-        memset(&server, '\0', sizeof(server));          // zero structure out
-        server.sin_family = AF_INET;                    // match socket call
-        server.sin_port = htons(port);                  // bind to port
-        server.sin_addr.s_addr = inet_addr("127.0.0.1");
-
         printf("Type 'open' to start a conection or 'quit' to leave> ");
         bzero(buf, sizeof(buf));
         fgets(buf, sizeof(buf), stdin);
         buf[strlen(buf)-1] = '\0';        // Remove line feed
         printf("Typed: %s\n", buf);
-        if(!strcmp(buf, "open")){
-            /* Connect
-            int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
-            Connects the socket referred to by the file descriptor sockfd to the
-            address specified by addr. addrlen argument specifies the size of addr.
-            */
-            k = connect(sock, (struct sockaddr*)&server, sizeof(server));
-            error(k, -1, "Connect failed.\n");
-            session = 1;
-            printf("\nConnected.\n\n");
+        ptr = NULL;
+        ptr = strtok(buf, delim);
+        for(int i = 0 ; i < 12 ; i++){
+            printf("ptr[%d] = %c : %d\n", i, ptr[i], ptr[i]);
+        }
+        if(!strcmp(ptr, "open")){
+            ptr = strtok(NULL, delim);
+            if(ptr != NULL){
+                for(int i = 0 ; i < 12 ; i++){
+                    printf("ptr[%d] = %c : %d\n", i, ptr[i], ptr[i]);
+                }
+                memset(&hints, 0, sizeof hints);        // zero structure out
+                hints.ai_family = AF_INET;
+                hints.ai_socktype = SOCK_STREAM;
+                status = getaddrinfo(ptr, "2121", &hints, &server);
+                if(status != 0){
+                    printf("Couldn't resolve server name. Try another server\n");
+                } else{
+                    // Create socket. Same as ftp_server.c
+                    sock = socket(server->ai_family, server->ai_socktype, server->ai_protocol);
+                    error(sock, -1, "Socket creation failed.\n");
 
-            printf("Type your username > ");
-            bzero(buf, sizeof(buf));
-            fgets(buf, sizeof(buf)-1, stdin);
-            printf("username typed: %s\n", buf);
+                    /* Connect
+                    int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+                    Connects the socket referred to by the file descriptor sockfd to the
+                    address specified by addr. addrlen argument specifies the size of addr.
+                    */
+                    k = connect(sock, server->ai_addr, server->ai_addrlen);
+                    error(k, -1, "Connect failed.\n");
+                    session = 1;
+                    printf("\nConnected.\n\n");
 
-            printf("\nSending username to server: %s\n", buf);
-            k = write(sock, buf, sizeof(buf));
-            error(k, -1, "Sending failed.\n");
+                    printf("Type your username > ");
+                    bzero(buf, sizeof(buf));
+                    fgets(buf, sizeof(buf)-1, stdin);
+                    printf("username typed: %s\n", buf);
 
-            printf("Type your password > ");
-            bzero(buf, sizeof(buf));
-            fgets(buf, sizeof(buf)-1, stdin);
-            printf("Password typed: %s\n", buf);
+                    printf("\nSending username to server: %s\n", buf);
+                    k = write(sock, buf, sizeof(buf));
+                    error(k, -1, "Sending failed.\n");
 
-            printf("\nSending password to server: %s\n", buf);
-            k = write(sock, buf, sizeof(buf));
-            error(k, -1, "Sending failed.\n");
+                    printf("Type your password > ");
+                    bzero(buf, sizeof(buf));
+                    fgets(buf, sizeof(buf)-1, stdin);
+                    printf("Password typed: %s\n", buf);
 
-            bzero(buf, sizeof(buf));
-            k = read(sock, buf, sizeof(buf));
-            error(k, -1, "Reading failed.\n");
+                    printf("\nSending password to server: %s\n", buf);
+                    k = write(sock, buf, sizeof(buf));
+                    error(k, -1, "Sending failed.\n");
 
-            printf("Server's response: %s\n", buf);
+                    bzero(buf, sizeof(buf));
+                    k = read(sock, buf, sizeof(buf));
+                    error(k, -1, "Reading failed.\n");
 
-            if(!strcmp(buf, "230"))
-                logged = 1;
-            else if (!strcmp(buf, "530")){
-                session = 0;
-                shutdown(sock, SHUT_RDWR);
-                close(sock);
-            }
+                    printf("Server's response: %s\n", buf);
+
+                    if(!strcmp(buf, "230"))
+                    logged = 1;
+                    else if (!strcmp(buf, "530")){
+                        session = 0;
+                        shutdown(sock, SHUT_RDWR);
+                        close(sock);
+                    }
+                }
+            } else printf("Type server name\n");
         }
         while(logged){
             // Read command from stdin
@@ -236,6 +250,7 @@ int main(int argc, char *argv[]){
 
             strcpy(command, buf);
             strcpy(cmd_name, buf);
+            ptr = NULL;
             ptr = strtok(cmd_name, delim);
             printf("cmd_name: %s\n", cmd_name);
             if(iscntrl(cmd_name[strlen(cmd_name)-1]))   // Remove line feed if needed
