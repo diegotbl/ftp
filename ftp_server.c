@@ -15,6 +15,7 @@
 #include<errno.h>
 
 #define FILE_NOT_FOUND      9385615
+#define DNT_OVWRT           7544832
 
 typedef struct {
     int sock;
@@ -282,10 +283,21 @@ void get(char * ptr, int sock_fd, char * my_path){
 void put(char * ptr, int sock_fd, char * my_path){
     char buf[100], file_path[100], file_to_send[100], *f;
     struct stat obj;
-    int size, err;
+    int size, err, exists;
     int filehandle;
     FILE * generated_file;
     int fd;
+
+    if(ptr == NULL) return;
+
+    // Check if file already exists here
+    if(access(ptr, F_OK) == -1)
+        exists = 0;
+    else exists = 1;
+
+    // Send exists to client
+    err = write(sock_fd, &exists, sizeof(exists));
+    error(err, -1, "Sending failed.\n");
 
     // Receive size of file
     recv(sock_fd, &size, sizeof(int), 0);
@@ -293,6 +305,11 @@ void put(char * ptr, int sock_fd, char * my_path){
 
     if(size == FILE_NOT_FOUND){
         printf("No file created\n");
+        return;
+    }
+
+    if(size == DNT_OVWRT){
+        printf("File was not overwriten\n");
         return;
     }
 

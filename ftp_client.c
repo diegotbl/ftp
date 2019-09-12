@@ -26,6 +26,7 @@
 #include <unistd.h>
 
 #define FILE_NOT_FOUND      9385615
+#define DNT_OVWRT           7544832
 
 void error(int a, int b, char * msg){
     if(a == b){
@@ -121,7 +122,7 @@ void read_and_ignore(int sock){
     return;
 }
 
-void put_file_in_server(int sock, char * ptr) {
+void put_file_in_server(int sock, char * ptr, int ovwrt) {
     struct stat obj;
     int size, filehandle;
 
@@ -132,14 +133,19 @@ void put_file_in_server(int sock, char * ptr) {
         // Send amount of bytes to server
         stat(ptr, &obj);
         size = obj.st_size;
+        if(!ovwrt)
+            size = DNT_OVWRT;
         send(sock, &size, sizeof(int), 0);
 
-        // Send file to server
-        filehandle = open(ptr, O_RDONLY);
-        error(filehandle, -1, "Couldn't open file.");
-        sendfile(sock, filehandle, NULL, size);
+        if(ovwrt){
+            // Send file to server
+            filehandle = open(ptr, O_RDONLY);
+            error(filehandle, -1, "Couldn't open file.");
+            sendfile(sock, filehandle, NULL, size);
+            printf("File successfully copied to server\n");
+        } else printf("File was not overwriten\n");
     } else {
-        // Send 0 to server
+        // Send FILE_NOT_FOUND to server
         size = FILE_NOT_FOUND;
         send(sock, &size, sizeof(int), 0);
 
@@ -153,7 +159,7 @@ int main(int argc, char *argv[]){
     int sock;
     unsigned short port = 2121;     // We will use port 2121
     char buf[100], command[100], cmd_name[100], filename[20], *f, ans;
-    int k, size, status;
+    int k, size, status, exists_in_server;
     int logged = 0, session = 0;
     struct stat obj;
     int filehandle, filesize;
@@ -303,15 +309,30 @@ int main(int argc, char *argv[]){
             } else if(!strcmp(cmd_name, "put")){
                 /* Send file to server */
                 ptr = strtok(NULL, delim);
-                if(iscntrl(ptr[strlen(ptr)-1]))   // Remove line feed if needed
-                    ptr[strlen(ptr)-1] = '\0';    // Remove line feed
-                for(int i = 0 ; i < 12 ; i++){
-                    printf("ptr[%d] = %c : %d\n", i, ptr[i], ptr[i]);
-                }
-                if(ptr == NULL){
-                    printf("File not specified. Choose a file to get\n");
-                } else {
-                    put_file_in_server(sock, ptr);
+                if(ptr != NULL){
+                    if(iscntrl(ptr[strlen(ptr)-1]))   // Remove line feed if needed
+                        ptr[strlen(ptr)-1] = '\0';
+                    // Receive message from server: 0 for file not there
+                    // and 1 for file already there
+                    recv(sock, &exists_in_server, sizeof(int), 0);
+                    printf("File already exists -> %d\n", exists_in_server);
+                    if(exists_in_server){
+                        printf("There is a file with the same name in the server. Do you want to overwrite it? [y/n]\n");
+                        ans = 'a';
+                        while(ans != 'y' && ans != 'n'){
+                            scanf("%c", &ans);
+                            getchar();
+                        }
+                        if(ans == 'y'){
+                            put_file_in_server(sock, ptr, 1);
+                        } else if(ans == 'n'){
+                            put_file_in_server(sock, ptr, 0);
+                        }
+                    } else {
+                        put_file_in_server(sock, ptr, 1);
+                    }
+                } else{
+                    printf("File not specified. Choose a file to put\n");
                 }
             } else {
                 printf("Command not found\n");
