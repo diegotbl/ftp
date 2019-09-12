@@ -349,7 +349,7 @@ void make_dir(char * dir_name, int sock_fd, char * my_path){
 
     // check if dir already exists
     // if does, send error message back to client
-    if(stat("/some/directory", &st) != -1){
+    if(stat(dir_name, &st) != -1){
         err = write(sock_fd, "Error: this directory already exists", 36);
         error(err, -1, "Sending failed.\n");
     }
@@ -359,7 +359,94 @@ void make_dir(char * dir_name, int sock_fd, char * my_path){
         err = write(sock_fd, "Directory successfully created", 30);
         error(err, -1, "Sending failed.\n");
     }
+    return;
+}
 
+int recursively_delete(char *path){
+    DIR *d = opendir(path);
+    size_t path_len = strlen(path);
+    int r = -1;
+    struct dirent *p;
+    char *buf;
+    size_t len;
+
+    if(d){
+        r = 0;
+
+        while(!r && (p=readdir(d))){
+            int r2 = -1;
+
+            /* Skip the names "." and ".." as we don't want to recurse on them. */
+            if(!strcmp(p->d_name, ".") || !strcmp(p->d_name, "..")){
+                continue;
+            }
+
+            len = path_len + strlen(p->d_name) + 2;
+            buf = malloc(len);
+
+            if(buf){
+                struct stat statbuf;
+
+                snprintf(buf, len, "%s/%s", path, p->d_name);
+
+                if(!stat(buf, &statbuf)){
+                    if(S_ISDIR(statbuf.st_mode)){
+                        r2 = recursively_delete(buf);
+                    }
+                    else{
+                        r2 = unlink(buf);
+                    }
+                }
+
+                free(buf);
+            }
+
+            r = r2;
+        }
+
+        closedir(d);
+    }
+
+    if(!r){
+        r = rmdir(path);
+    }
+
+    return r;
+}
+
+void remove_dir(char * dir_name, int sock_fd, char * base_dir){
+    struct stat st;
+    int err;
+    char msg[100];
+
+    memset(&st, 0, sizeof st);      // zero structure out
+
+    // check if dir exists
+    // if doesn't, send error message back to client
+    if(stat(dir_name, &st) == -1){
+        err = write(sock_fd, "Error: this directory doesn't exist", 35);
+        error(err, -1, "Sending failed.\n");
+    }
+    // if does, check if it's the base_dir
+    else if(!strcmp(dir_name, base_dir)){
+        err = write(sock_fd, "Error: this is the server's base directory. You can't delete it.", 64);
+        error(err, -1, "Sending failed.\n");
+    }
+    else{       // Recursively delete dir
+        err = recursively_delete(dir_name);
+        printf("recursively_delete returns: %d\n", err);
+        error(err, -1, "Recursive deleting dir failed.\n");
+        if(err == 0){
+            err = write(sock_fd, "Directory and it's content successfully deleted", 47);
+            error(err, -1, "Sending failed.\n");
+        } else {
+            strcpy(msg, "Directory couldn't be deleted. ");
+            strcat(msg, strerror(errno));
+            err = write(sock_fd, msg, sizeof(msg));
+            error(err, -1, "Sending failed.\n");
+        }
+    }
+    return;
 }
 
 void * handle_client(void * args){
@@ -491,6 +578,15 @@ void * handle_client(void * args){
                 printf("No dir specified\n");
             } else{
                 make_dir(ptr, info->sock, my_path);
+            }
+        } else if(!strcmp(cmd_name, "rmdir")){
+            ptr = strtok(NULL, delim);
+            printf("Command sent from client: %s\n", buf);
+            printf("param: %s\n", ptr);
+            if(ptr == NULL){
+                printf("No dir specified to erase\n");
+            } else{
+                remove_dir(ptr, info->sock, info->base_dir);
             }
         } else if(!strcmp(cmd_name, "delete")){
             ptr = strtok(NULL, delim);

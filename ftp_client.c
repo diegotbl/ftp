@@ -300,6 +300,14 @@ int main(int argc, char *argv[]){
                     recv(sock, buf, sizeof(buf), 0);
                     printf("Server's response: %s\n", buf);
                 }
+            } else if(!strcmp(cmd_name, "rmdir")){
+                ptr = strtok(NULL, delim);
+                if(ptr == NULL){
+                    printf("Specify a directory to erase\n");
+                } else{
+                    recv(sock, buf, sizeof(buf), 0);
+                    printf("Server's response: %s\n", buf);
+                }
             } else if(!strcmp(cmd_name, "delete")){
                 /* Receive file containing result and print it */
                 receive_and_print_file_response(sock);
