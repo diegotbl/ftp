@@ -39,14 +39,14 @@ void error(int a, int b, char * msg){
 }
 
 void receive_and_print_file_response(int sock){
-    int size, k;
+    int k;
+    long size;
     char *f;
     int filehandle;
 
-    recv(sock, &size, sizeof(int), 0);
-    printf("Size received: %d\n", size);
+    recv(sock, &size, sizeof(long), 0);
     if(size != 0){
-        f = malloc(size);
+        f = (char *)malloc(size*sizeof(char));
         recv(sock, f, size, 0);
         filehandle = creat("temp.txt", O_WRONLY);
         error(filehandle, -1, "Creating temp.txt failed.\n");
@@ -61,13 +61,14 @@ void receive_and_print_file_response(int sock){
 }
 
 void get_file_response(int sock, char * param){
-    int size, k;
+    int k;
+    long size;
     char *f;
-    char buf[100], file_path[100];
+    char buf[2048], file_path[100];
     int filehandle;
 
-    recv(sock, &size, sizeof(int), 0);
-    printf("Size received: %d\n", size);
+    recv(sock, &size, sizeof(long), 0);
+    printf("Size received: %ld\nCopying %ld bytes to file\n", size, size);
 
     if(size == FILE_NOT_FOUND){
         printf("File not found\n");
@@ -77,8 +78,6 @@ void get_file_response(int sock, char * param){
     getcwd(file_path, sizeof(file_path));
     strcat(file_path, "/");
     strcat(file_path, param);
-
-    printf("file_path: %s\n", file_path);
 
     filehandle = creat(file_path, O_WRONLY);
     error(filehandle, -1, "File creation failed.\n");
@@ -90,15 +89,11 @@ void get_file_response(int sock, char * param){
     system(buf);
 
     if(size != 0){
-        f = malloc(size);
+        f = (char *)malloc(size*sizeof(char));
         recv(sock, f, size, 0);
         k = write(filehandle, f, size);
         error(k, -1, "Reading failed.\n");
         close(filehandle);
-        bzero(buf, sizeof(buf));
-        strcpy(buf, "cat ");
-        strcat(buf, file_path);
-        system(buf);
         printf("File successfully copied to local machine\n");
     } else {        // File with 0 bytes
         k = write(filehandle, "", size);
@@ -109,13 +104,12 @@ void get_file_response(int sock, char * param){
 }
 
 void read_and_ignore(int sock){
-    int size;
+    long size;
     char *f;
 
-    recv(sock, &size, sizeof(int), 0);
-    printf("Size received: %d\n", size);
+    recv(sock, &size, sizeof(long), 0);
     if(size != 0){
-        f = malloc(size);
+        f = (char *)malloc(size*sizeof(char));
         recv(sock, f, size, 0);
     }
 
@@ -124,7 +118,8 @@ void read_and_ignore(int sock){
 
 void put_file_in_server(int sock, char * ptr, int ovwrt) {
     struct stat obj;
-    int size, filehandle;
+    long size;
+    int filehandle;
 
     // Check if file exists locally
     printf("file_path: %s\n", ptr);
@@ -135,7 +130,7 @@ void put_file_in_server(int sock, char * ptr, int ovwrt) {
         size = obj.st_size;
         if(!ovwrt)
             size = DNT_OVWRT;
-        send(sock, &size, sizeof(int), 0);
+        send(sock, &size, sizeof(long), 0);
 
         if(ovwrt){
             // Send file to server
@@ -147,52 +142,41 @@ void put_file_in_server(int sock, char * ptr, int ovwrt) {
     } else {
         // Send FILE_NOT_FOUND to server
         size = FILE_NOT_FOUND;
-        send(sock, &size, sizeof(int), 0);
+        send(sock, &size, sizeof(long), 0);
 
         printf("File not found\n");
     }
     return;
 }
 
-int main(int argc, char *argv[]){
+int main(){
     struct addrinfo hints, *server;
     int sock;
-    // unsigned short port = 2121;     // We will use port 2121
-    char buf[100], command[100], cmd_name[100], filename[20], *f, ans;
-    int k, size, status, exists_in_server;
+    char buf[2048], cmd_name[50], ans;
+    int k, status, exists_in_server;
+    long size;
     int logged = 0, session = 0;
-    struct stat obj;
-    int filehandle, filesize;
-    struct hostent *h;
-    struct in_addr address;
     const char delim[2] = " ";
     char * ptr;
 
     bzero(buf, sizeof(buf));
     while(session == 0 && strcmp(buf, "quit")){
-        printf("Type 'open' to start a conection or 'quit' to leave> ");
+        printf("Type 'open <server name>' to start or 'quit' to leave> ");
         bzero(buf, sizeof(buf));
         fgets(buf, sizeof(buf), stdin);
         buf[strlen(buf)-1] = '\0';        // Remove line feed
-        printf("Typed: %s\n", buf);
         ptr = NULL;
         ptr = strtok(buf, delim);
-        for(int i = 0 ; i < 12 ; i++){
-            printf("ptr[%d] = %c : %d\n", i, ptr[i], ptr[i]);
-        }
         if(!strcmp(ptr, "open")){
             ptr = strtok(NULL, delim);
             if(ptr != NULL){
-                for(int i = 0 ; i < 12 ; i++){
-                    printf("ptr[%d] = %c : %d\n", i, ptr[i], ptr[i]);
-                }
                 memset(&hints, 0, sizeof hints);        // zero structure out
                 hints.ai_family = AF_INET;
                 hints.ai_socktype = SOCK_STREAM;
                 status = getaddrinfo(ptr, "2121", &hints, &server);
                 if(status != 0){
                     printf("Couldn't resolve server name. Try another server\n");
-                } else{
+                } else {
                     // Create socket. Same as ftp_server.c
                     sock = socket(server->ai_family, server->ai_socktype, server->ai_protocol);
                     error(sock, -1, "Socket creation failed.\n");
@@ -209,31 +193,24 @@ int main(int argc, char *argv[]){
 
                     printf("Type your username > ");
                     bzero(buf, sizeof(buf));
-                    fgets(buf, sizeof(buf)-1, stdin);
-                    printf("username typed: %s\n", buf);
-
-                    printf("\nSending username to server: %s\n", buf);
+                    fgets(buf, sizeof(buf)-1, stdin);       // sending username to server
                     k = write(sock, buf, sizeof(buf));
                     error(k, -1, "Sending failed.\n");
 
                     printf("Type your password > ");
                     bzero(buf, sizeof(buf));
                     fgets(buf, sizeof(buf)-1, stdin);
-                    printf("Password typed: %s\n", buf);
-
-                    printf("\nSending password to server: %s\n", buf);
-                    k = write(sock, buf, sizeof(buf));
+                    k = write(sock, buf, sizeof(buf));      // sending password to server
                     error(k, -1, "Sending failed.\n");
 
                     bzero(buf, sizeof(buf));
                     k = read(sock, buf, sizeof(buf));
                     error(k, -1, "Reading failed.\n");
-
                     printf("Server's response: %s\n", buf);
 
-                    if(!strcmp(buf, "230"))
+                    if(!strcmp(buf, "Logged"))
                     logged = 1;
-                    else if (!strcmp(buf, "530")){
+                    else if (!strcmp(buf, "Not logged")){
                         session = 0;
                         shutdown(sock, SHUT_RDWR);
                         close(sock);
@@ -246,17 +223,13 @@ int main(int argc, char *argv[]){
             printf("ftp> ");
             bzero(buf, sizeof(buf));
             fgets(buf, sizeof(buf)-1, stdin);
-            printf("command read: %s\n", buf);
 
-            strcpy(command, buf);
             strcpy(cmd_name, buf);
             ptr = NULL;
             ptr = strtok(cmd_name, delim);
-            printf("cmd_name: %s\n", cmd_name);
             if(iscntrl(cmd_name[strlen(cmd_name)-1]))   // Remove line feed if needed
                 cmd_name[strlen(cmd_name)-1] = '\0';
 
-            printf("\nsending buf: %s\n", buf);
             k = write(sock, buf, sizeof(buf));
             error(k, -1, "Sending failed.\n");
 
@@ -317,7 +290,6 @@ int main(int argc, char *argv[]){
                 if(ptr != NULL){
                     if(iscntrl(ptr[strlen(ptr)-1]))   // Remove line feed if needed
                         ptr[strlen(ptr)-1] = '\0';
-                    printf("access: %d\n", access(ptr, F_OK));
                     if(access(ptr, F_OK) != -1){
                         printf("There is a file with the same name in machine. Do you want to overwrite it? [y/n]\n");
                         ans = 'a';
@@ -346,7 +318,6 @@ int main(int argc, char *argv[]){
                     // Receive message from server: 0 for file not there
                     // and 1 for file already there
                     recv(sock, &exists_in_server, sizeof(int), 0);
-                    printf("File already exists -> %d\n", exists_in_server);
                     if(exists_in_server){
                         printf("There is a file with the same name in the server. Do you want to overwrite it? [y/n]\n");
                         ans = 'a';
@@ -354,20 +325,16 @@ int main(int argc, char *argv[]){
                             scanf("%c", &ans);
                             getchar();
                         }
-                        if(ans == 'y'){
+                        if(ans == 'y')
                             put_file_in_server(sock, ptr, 1);
-                        } else if(ans == 'n'){
+                        else if(ans == 'n')
                             put_file_in_server(sock, ptr, 0);
-                        }
-                    } else {
+                    } else
                         put_file_in_server(sock, ptr, 1);
-                    }
-                } else{
+                } else
                     printf("File not specified. Choose a file to put\n");
-                }
-            } else {
-                printf("Command not found\n");
-            }
+            } else
+                printf("Command not found.\n");
         }
     }
 }

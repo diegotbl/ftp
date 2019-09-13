@@ -74,8 +74,9 @@ char* itoa(int value, char* result, int base) {
 }
 
 void parse_file(char * name){
+    /* Remove entry 'name' from file named 'name'. Useful in ls command */
     FILE * fd, * parsed;
-    char line[100], last_line[100], * buf;
+    char line[2048], last_line[2048], * buf;
     int n;
 
     strcpy(last_line, "\0");
@@ -87,7 +88,6 @@ void parse_file(char * name){
         // Remove line feed if needed
         if(iscntrl(line[strlen(line)-1]))
             line[strlen(line)-1] = '\0';
-        printf("%s\n", line);
         if(strcmp(line, name))
             fprintf(parsed, "%s\n", line);
     }
@@ -98,21 +98,18 @@ void parse_file(char * name){
 
 int auth(char * username, char * password, FILE * cred_file){
     /* Checks if (username, password) is in cred_file */
-    char line[100], user[100];
+    char line[2048], user[2048];
     char * ptr;
     const char delim[2] = " ";
 
-    while(fgets(line, 100, cred_file) != NULL){
+    while(fgets(line, sizeof(line), cred_file) != NULL){
         // Remove line feed if needed
         if(iscntrl(line[strlen(line)-1]))
             line[strlen(line)-1] = '\0';
         strcpy(user, line);
         ptr = strtok(user, delim);
-        printf("%s user read from file\n", user);
         ptr = strtok(NULL, delim);
-        printf("ptr: %s\n", ptr);
         if(!strcmp(username, user)){
-            printf("User found: %s\n", user);
             if(!strcmp(password, ptr)){
                 printf("User authenticated\n");
                 return 1;
@@ -123,14 +120,15 @@ int auth(char * username, char * password, FILE * cred_file){
             }
         }
     }
-    printf("User NOT found. Retry.\n");
+    printf("User NOT found\n");
     return 0;
 }
 
 void ls(char * ptr, int sock_fd, char * my_path){
-    char buf[100], path[100];
+    char buf[2048], path[2048];
     struct stat obj;
-    int size, err;
+    int err;
+    long size;
     int filehandle;
     FILE * generated_file;
     int nread;
@@ -167,7 +165,6 @@ void ls(char * ptr, int sock_fd, char * my_path){
                 d = (struct linux_dirent *) (buf + bpos);
                 d_type = *(buf + bpos + d->d_reclen - 1);
                 if(strcmp(d->d_name, ".") && strcmp(d->d_name, "..")){
-                    printf("%s\n", d->d_name);
                     fprintf(generated_file, "%s\n", d->d_name);
                 }
                 bpos += d->d_reclen;
@@ -178,13 +175,9 @@ void ls(char * ptr, int sock_fd, char * my_path){
 
     parse_file("temps.txt");
 
-    printf("cat parsed.txt\n");
-    system("cat parsed.txt");
-    printf("end cat parsed.txt\n");
-
     stat("parsed.txt", &obj);
     size = obj.st_size;
-    send(sock_fd, &size, sizeof(int), 0);
+    send(sock_fd, &size, sizeof(long), 0);
     filehandle = open("parsed.txt", O_RDONLY);
     sendfile(sock_fd, filehandle, NULL, size);
 
@@ -197,9 +190,10 @@ void ls(char * ptr, int sock_fd, char * my_path){
 }
 
 void delete(char * ptr, int sock_fd, char * my_path){
-    char buf[100], file_path[100];
+    char buf[2048], file_path[2048];
     struct stat obj;
-    int size, err;
+    int err;
+    long size;
     int filehandle;
     FILE * generated_file;
     int fd;
@@ -225,13 +219,9 @@ void delete(char * ptr, int sock_fd, char * my_path){
     }
     fclose(generated_file);
 
-    printf("cat temps.txt\n");
-    system("cat temps.txt");
-    printf("end cat temps.txt\n");
-
     stat("temps.txt", &obj);
     size = obj.st_size;
-    send(sock_fd, &size, sizeof(int), 0);
+    send(sock_fd, &size, sizeof(long), 0);
     filehandle = open("temps.txt", O_RDONLY);
     sendfile(sock_fd, filehandle, NULL, size);
 
@@ -242,9 +232,10 @@ void delete(char * ptr, int sock_fd, char * my_path){
 }
 
 void get(char * ptr, int sock_fd, char * my_path){
-    char buf[100], file_path[100], file_to_send[100];
+    char buf[2048], file_path[2048], file_to_send[2048];
     struct stat obj;
-    int size, err;
+    int err;
+    long size;
     int filehandle;
     FILE * generated_file;
     int fd;
@@ -258,21 +249,15 @@ void get(char * ptr, int sock_fd, char * my_path){
     strcat(file_path, "/");
     strcat(file_path, ptr);
     printf("file_path: %s\n", file_path);
-    printf("access: %d\n", access(file_path, F_OK));
     if(access(file_path, F_OK) != -1){
-        printf("cat %s\n", file_path);
-        strcpy(buf, "cat ");
-        strcat(buf, file_path);
-        system(buf);
-        printf("end cat %s\n", file_path);
         stat(file_path, &obj);
         size = obj.st_size;
-        send(sock_fd, &size, sizeof(int), 0);
+        send(sock_fd, &size, sizeof(long), 0);
         filehandle = open(file_path, O_RDONLY);
         sendfile(sock_fd, filehandle, NULL, size);
     } else {
         size = FILE_NOT_FOUND;
-        send(sock_fd, &size, sizeof(int), 0);
+        send(sock_fd, &size, sizeof(long), 0);
         filehandle = open(file_path, O_RDONLY);
         sendfile(sock_fd, filehandle, NULL, 0);
     }
@@ -281,9 +266,10 @@ void get(char * ptr, int sock_fd, char * my_path){
 }
 
 void put(char * ptr, int sock_fd, char * my_path){
-    char buf[100], file_path[100], file_to_send[100], *f;
+    char buf[2048], file_path[2048], file_to_send[2048], *f;
     struct stat obj;
-    int size, err, exists;
+    int err, exists;
+    long size;
     int filehandle;
     FILE * generated_file;
     int fd;
@@ -300,8 +286,8 @@ void put(char * ptr, int sock_fd, char * my_path){
     error(err, -1, "Sending failed.\n");
 
     // Receive size of file
-    recv(sock_fd, &size, sizeof(int), 0);
-    printf("Size received: %d\n", size);
+    recv(sock_fd, &size, sizeof(long), 0);
+    printf("Size received: %ld\n", size);
 
     if(size == FILE_NOT_FOUND){
         printf("No file created\n");
@@ -322,15 +308,11 @@ void put(char * ptr, int sock_fd, char * my_path){
     system(buf);
 
     if(size != 0){
-        f = malloc(size);
+        f = (char *)malloc(size*sizeof(char));
         recv(sock_fd, f, size, 0);
         err = write(filehandle, f, size);
         error(err, -1, "Reading failed.\n");
         close(filehandle);
-        bzero(buf, sizeof(buf));
-        strcpy(buf, "cat ");
-        strcat(buf, ptr);
-        system(buf);
         printf("File successfully copied to server\n");
     } else {        // File with 0 bytes
         write(filehandle, "", size);
@@ -417,7 +399,7 @@ int recursively_delete(char *path){
 void remove_dir(char * dir_name, int sock_fd, char * base_dir){
     struct stat st;
     int err;
-    char msg[100];
+    char msg[2048];
 
     memset(&st, 0, sizeof st);      // zero structure out
 
@@ -434,7 +416,6 @@ void remove_dir(char * dir_name, int sock_fd, char * base_dir){
     }
     else{       // Recursively delete dir
         err = recursively_delete(dir_name);
-        printf("recursively_delete returns: %d\n", err);
         error(err, -1, "Recursive deleting dir failed.\n");
         if(err == 0){
             err = write(sock_fd, "Directory and it's content successfully deleted", 47);
@@ -450,18 +431,19 @@ void remove_dir(char * dir_name, int sock_fd, char * base_dir){
 }
 
 void * handle_client(void * args){
-    int err, i, size, len, c, j;
+    int err, i, len, c, j;
+    long size;
     int logged = 0;
-    char buf[100], command[100];
+    char buf[2048], command[2048];
     char * ptr;                         // pointer to split string
     char * param;                       // result of command spliting
-    char cmd_name[100];
+    char cmd_name[2048];
     const char delim[2] = " ";          // split delimiter
     client_info * info = args;
-    char username[100], pswd[100];
+    char username[2048], pswd[2048];
     FILE * cred_file;
     int retval = 0;
-    char my_path[100];
+    char my_path[2048];
 
     printf("New thread. Logging in.\n");
 
@@ -488,14 +470,12 @@ void * handle_client(void * args){
     strcpy(pswd, buf);
     pswd[strlen(pswd)-1] = '\0';        // Remove line feed
 
-    printf("Username: %s ; pswd: %s\n", username, pswd);
-
     if(auth(username, pswd, cred_file)){
         logged = 1;
-        err = write(info->sock, "230", 3);  // 230 means user logged in
+        err = write(info->sock, "Logged", 6);
         error(err, -1, "Sending failed.\n");
     } else {      // Error authenticating
-        err = write(info->sock, "530", 3);  // 530 means not logged in
+        err = write(info->sock, "Not logged", 10);
         error(err, -1, "Sending failed.\n");
         fclose(cred_file);
         pthread_exit(&retval);      // Close thread and wait for new connection
@@ -522,13 +502,10 @@ void * handle_client(void * args){
         if(iscntrl(buf[strlen(buf)-1]))
             buf[strlen(buf)-1] = '\0';
 
-        printf("Received: %s\n", buf);
-
         // Split command string
         bzero(cmd_name, sizeof(cmd_name));
         strcpy(cmd_name, buf);
         ptr = strtok(cmd_name, delim);
-        printf("cmd_name: %s\n", cmd_name);
 
         chdir(my_path);
 
@@ -545,7 +522,6 @@ void * handle_client(void * args){
         } else if(!strcmp(cmd_name, "cd")){
             ptr = strtok(NULL, delim);      // Get dirname
             printf("Command sent from client: %s\n", buf);
-            printf("path: %s\n", ptr);
             if(chdir(ptr) == 0){     // Success
                 getcwd(my_path, sizeof(my_path));
                 err = write(info->sock, "Directory changed", 17);
@@ -558,22 +534,18 @@ void * handle_client(void * args){
         } else if(!strcmp(cmd_name, "ls")){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
-            printf("param: %s\n", ptr);
             ls(ptr, info->sock, my_path);
         } else if(!strcmp(cmd_name, "get")){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
-            printf("param: %s\n", ptr);
             get(ptr, info->sock, my_path);
         } else if(!strcmp(cmd_name, "put")){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
-            printf("param: %s\n", ptr);
             put(ptr, info->sock, my_path);
         } else if(!strcmp(cmd_name, "mkdir")){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
-            printf("param: %s\n", ptr);
             if(ptr == NULL){
                 printf("No dir specified\n");
             } else{
@@ -582,7 +554,6 @@ void * handle_client(void * args){
         } else if(!strcmp(cmd_name, "rmdir")){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
-            printf("param: %s\n", ptr);
             if(ptr == NULL){
                 printf("No dir specified to erase\n");
             } else{
@@ -591,20 +562,19 @@ void * handle_client(void * args){
         } else if(!strcmp(cmd_name, "delete")){
             ptr = strtok(NULL, delim);
             printf("Command sent from client: %s\n", buf);
-            printf("param: %s\n", ptr);
             delete(ptr, info->sock, my_path);
         } else if(!strcmp(cmd_name, "close")){
             printf("Command sent from client: %s. Client disconnected.\n", buf);
-            err = write(info->sock, "530", 3);
+            err = write(info->sock, "Not logged", 10);
             error(err, -1, "Sending failed.\n");
             logged = 0;
         } else if(!strcmp(cmd_name, "quit")){
             printf("Command sent from client: %s. Client disconnected.\n", buf);
-            err = write(info->sock, "221", 3);
+            err = write(info->sock, "Logging out and terminating program", 35);
             error(err, -1, "Sending failed.\n");
             logged = 0;
         } else {
-            printf("Command sent from client: %s\n", buf);
+            printf("Command sent from client: %s. Not implemented\n", buf);
         }
     }
 
